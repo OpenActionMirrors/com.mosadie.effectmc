@@ -6,7 +6,7 @@ This is not going to get updated often because the tools are extremely out of da
 
 This was a "I wonder if I could" situation. Support may be slow or non-existent for this version. (Still report issues though, I'll try to help.)
 
-For the Stream Deck plugin, use the version from [this release (v2.3.0)](https://github.com/MoSadie/EffectMC/releases/tag/v2.3.0). It still has the built-in web dashboard and accepts the same http requests, if alternate methods are needed.
+For the Stream Deck plugin, use the version from [this release (v3.1.0)](https://github.com/MoSadie/EffectMC/releases/tag/v3.1.0). It still has the built-in web dashboard and accepts the same http requests, if alternate methods are needed.
 
 ## Effect Changes
 
@@ -19,3 +19,4 @@ Due to the large Minecraft version difference, some effects do not work in the u
 - [Narrate](https://github.com/MoSadie/EffectMC/wiki/narrate) does not work.
 - [Open Screen](https://github.com/MoSadie/EffectMC/wiki/open-screen) may crash your game. Sorry.
 - [Show Item Toast](https://github.com/MoSadie/EffectMC/wiki/show-item-toast) does not work.
+- [Set Volume](https://github.com/MoSadie/EffectMC/wiki/set-volume) does not support the Voice sound category.

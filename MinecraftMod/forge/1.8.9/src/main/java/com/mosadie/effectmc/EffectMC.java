@@ -6,6 +6,7 @@ import com.mosadie.effectmc.core.EffectExecutor;
 import com.mosadie.effectmc.core.EffectMCCore;
 import com.mosadie.effectmc.core.WorldState;
 import com.mosadie.effectmc.core.handler.*;
+import com.mosadie.effectmc.core.effect.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.ISound;
 import net.minecraft.client.audio.ISound.AttenuationType;
@@ -67,7 +68,7 @@ import java.util.List;
 @Mod(modid = EffectMC.MODID, version = EffectMC.VERSION)
 public class EffectMC implements EffectExecutor {
 	public static final String MODID = "effectmc";
-	public static final String VERSION = "2.3";
+	public static final String VERSION = "3.1";
 
 	public static EffectMCCore core;
 
@@ -148,7 +149,7 @@ public class EffectMC implements EffectExecutor {
 
 			switch (args[0].toLowerCase()) {
 			case "trust":
-				Minecraft.getMinecraft().addScheduledTask(core::setTrustNextRequest);
+				Minecraft.getMinecraft().addScheduledTask(core::setTrustFlag);
 				sender.addChatMessage(
 						new ChatComponentText("[EffectMC] Now prompting to trust the next request sent."));
 				return;
@@ -231,7 +232,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public boolean setSkinLayer(SkinLayerHandler.SKIN_SECTION section, boolean visibility) {
+	public boolean setSkinLayer(SkinLayerEffect.SKIN_SECTION section, boolean visibility) {
 		GameSettings gameSettings = Minecraft.getMinecraft().gameSettings;
 
 		switch (section) {
@@ -274,7 +275,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public boolean toggleSkinLayer(SkinLayerHandler.SKIN_SECTION section) {
+	public boolean toggleSkinLayer(SkinLayerEffect.SKIN_SECTION section) {
 		GameSettings gameSettings = Minecraft.getMinecraft().gameSettings;
 		switch (section) {
 
@@ -356,7 +357,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public boolean triggerDisconnect(DisconnectHandler.NEXT_SCREEN nextScreenType, String title, String message) {
+	public boolean triggerDisconnect(DisconnectEffect.NEXT_SCREEN nextScreenType, String title, String message) {
 		Minecraft.getMinecraft().addScheduledTask(() -> {
 			leaveIfNeeded();
 
@@ -484,7 +485,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public void showTrustPrompt(String device) {
+	public void showTrustPrompt(Device device) {
 		Minecraft.getMinecraft().addScheduledTask(() -> {
 //        	EffectMCCore.TrustBooleanConsumer consumer = new EffectMCCore.TrustBooleanConsumer(device, core);
 			GuiYesNoCallback callback = new GuiYesNoCallback() {
@@ -500,7 +501,7 @@ public class EffectMC implements EffectExecutor {
 
 			};
 			GuiYesNo screen = new GuiYesNo(callback, "EffectMC - Trust Prompt",
-					"Do you want to trust this device? (" + device + ")", 0);
+					"Do you want to trust this device?\n(Type: " + device.getType() + (device.getType() == DeviceType.OTHER ? " Device Id:" + device.getId() : "") + ")", 0);
 			Minecraft.getMinecraft().displayGuiScreen(screen);
 		});
 	}
@@ -595,7 +596,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public boolean setSkin(URL skinUrl, SetSkinHandler.SKIN_TYPE skinType) {
+	public boolean setSkin(URL skinUrl, SetSkinEffect.SKIN_TYPE skinType) {
 		if (skinUrl == null) {
 			LOGGER.warn("Skin URL is null!");
 			return false;
@@ -641,7 +642,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public boolean openScreen(OpenScreenHandler.SCREEN screen) {
+	public boolean openScreen(OpenScreenEffect.SCREEN screen) {
 		Minecraft.getMinecraft().addScheduledTask(() -> {
 			leaveIfNeeded();
 
@@ -676,7 +677,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public boolean setPOV(SetPovHandler.POV pov) {
+	public boolean setPOV(SetPovEffect.POV pov) {
 		int mcPov;
 
 		switch (pov) {
@@ -719,7 +720,7 @@ public class EffectMC implements EffectExecutor {
 	}
 
 	@Override
-	public boolean setChatVisibility(ChatVisibilityHandler.VISIBILITY visibility) {
+	public boolean setChatVisibility(ChatVisibilityEffect.VISIBILITY visibility) {
 		EnumChatVisibility result;
 		switch (visibility) {
 		case SHOW:
@@ -781,7 +782,7 @@ public class EffectMC implements EffectExecutor {
 		IntegratedServer server = Minecraft.getMinecraft().getIntegratedServer();
 
 		if (server != null) {
-			return server.getName();
+			return server.getFolderName();
 		}
 
 		LOGGER.info("Attempted to get SP World Name, but no integrated server was found!");
@@ -801,4 +802,52 @@ public class EffectMC implements EffectExecutor {
 		LOGGER.info("Attempted to get Server IP, but no server data was found!");
 		return null;
 	}
+
+	@Override
+    public void setVolume(SetVolumeEffect.VOLUME_CATEGORIES category, int volume) {
+        Minecraft.getMinecraft().addScheduledTask(() -> {
+
+            SoundCategory mcSoundSource;
+
+            switch (category) {
+                case MASTER:
+                    mcSoundSource = SoundCategory.MASTER;
+                    break;
+                case MUSIC:
+                    mcSoundSource = SoundCategory.MUSIC;
+                    break;
+                case RECORDS:
+                    mcSoundSource = SoundCategory.RECORDS;
+                    break;
+                case WEATHER:
+                    mcSoundSource = SoundCategory.WEATHER;
+                    break;
+                case BLOCKS:
+                    mcSoundSource = SoundCategory.BLOCKS;
+                    break;
+                case HOSTILE:
+                    mcSoundSource = SoundCategory.MOBS;
+                    break;
+                case NEUTRAL:
+                    mcSoundSource = SoundCategory.ANIMALS;
+                    break;
+                case PLAYERS:
+                    mcSoundSource = SoundCategory.PLAYERS;
+                    break;
+                case AMBIENT:
+                    mcSoundSource = SoundCategory.AMBIENT;
+                    break;
+                case VOICE:
+                    //mcSoundSource = SoundCategory.VOICE;
+					LOGGER.warn("Voice sound category unsupported in this version!");
+					return;
+                default:
+                    LOGGER.error("Unknown volume category!");
+                    return;
+            }
+
+            Minecraft.getMinecraft().gameSettings.setSoundLevel(mcSoundSource, volume / 100.0f);
+            Minecraft.getMinecraft().gameSettings.saveOptions();
+        });
+    }
 }
