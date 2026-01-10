@@ -48,13 +48,6 @@ dependencies {
 
 	implementation "com.mosadie.effectmc:core:${project.effectmc_core_version}"
 	include "com.mosadie.effectmc:core:${project.effectmc_core_version}"
-
-	implementation "org.apache.httpcomponents.client5:httpclient5:5.5.1"
-	include "org.apache.httpcomponents.client5:httpclient5:5.5.1"
-
-	// Dependencies of httpclient5
-	include "org.apache.httpcomponents.core5:httpcore5:5.3.6"
-	include "org.apache.httpcomponents.core5:httpcore5-h2:5.3.6"
 }
 processResources {
 	inputs.property "version", project.version

@@ -42,7 +42,6 @@ import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.client.sound.SoundInstance;
 import net.minecraft.client.toast.SystemToast;
 import net.minecraft.command.CommandRegistryAccess;
-import net.minecraft.component.Component;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.WrittenBookContentComponent;
 import net.minecraft.entity.player.PlayerModelPart;
@@ -57,24 +56,20 @@ import net.minecraft.text.TranslatableTextContent;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.random.Random;
 import org.apache.commons.io.IOUtils;
-import org.apache.hc.client5.http.classic.HttpClient;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
-import org.apache.hc.core5.http.ContentType;
-import org.apache.hc.core5.http.Header;
-import org.apache.hc.core5.http.HttpResponse;
-import org.apache.hc.core5.http.io.entity.StringEntity;
-import org.apache.hc.core5.http.message.BasicHeader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.Authenticator;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 public class EffectMC implements ModInitializer, ClientModInitializer, EffectExecutor {
@@ -89,7 +84,7 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 	private static Random random = Random.create();
 	private static ServerInfo serverInfo = new ServerInfo("", "", ServerInfo.ServerType.OTHER); // Used to hold data during Open Screen
 
-	private HttpClient authedClient;
+	private HttpClient httpClient;
 
 	@Override
 	public void onInitialize() {
@@ -131,10 +126,7 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 		// Register command
 		ClientCommandRegistrationCallback.EVENT.register(this::registerClientCommand);
 
-		Header authHeader = new BasicHeader("Authorization", "Bearer " + MinecraftClient.getInstance().getSession().getAccessToken());
-		List<Header> headers = new ArrayList<>();
-		headers.add(authHeader);
-		authedClient = HttpClientBuilder.create().setDefaultHeaders(headers).build();
+		httpClient = HttpClient.newHttpClient();
 	}
 
 	private void registerClientCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
@@ -613,24 +605,27 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 			payload.add("variant", new JsonPrimitive(skinType.getValue()));
 			payload.add("url", new JsonPrimitive(skinUrl.toString()));
 
-			HttpPost request = new HttpPost("https://api.minecraftservices.com/minecraft/profile/skins");
-			request.setEntity(new StringEntity(payload.toString(), ContentType.APPLICATION_JSON));
+			LOGGER.info("Payload: " + core.toJson(payload));
 
-			boolean result = authedClient.execute(request, (response -> {
-				if (response.getEntity() != null && response.getEntity().getContentLength() > 0) {
-					JsonObject responseJSON = core.fromJson(IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8));
-					if (responseJSON.has("errorMessage")) {
-						LOGGER.warn("Failed to update the skin! " + responseJSON);
-						return false;
-					}
+			HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.minecraftservices.com/minecraft/profile/skins"))
+					.header("Authorization", "Bearer " + MinecraftClient.getInstance().getSession().getAccessToken())
+					.POST(HttpRequest.BodyPublishers.ofString(core.toJson(payload), java.nio.charset.StandardCharsets.UTF_8))
+					.header("Content-Type", "application/json")
+					.build();
 
-					LOGGER.debug("Skin Update Response: " + responseJSON);
+			HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+			if (response.statusCode() == 200 && response.body() != null && response.body().length() > 0) {
+				JsonObject responseJSON = core.fromJson(response.body());
+				if (responseJSON.has("errorMessage")) {
+					LOGGER.warn("Failed to update the skin! " + responseJSON);
+					return false;
 				}
-				return true;
-			}));
 
-			if (!result) {
-				LOGGER.info("Skin update unsuccessful!");
+				LOGGER.debug("Skin Update Response: " + responseJSON);
+			} else {
+				LOGGER.info("Skin update unsuccessful! HTTP Status: " + response.statusCode());
+				if (response.body() != null) LOGGER.info("Response Body: " + response.body());
 				return false;
 			}
 
@@ -638,6 +633,9 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 			return true;
 		} catch (IOException e) {
 			LOGGER.warn("Failed to update skin!", e);
+			return false;
+		} catch (InterruptedException e) {
+			LOGGER.warn("Skin update interrupted!", e);
 			return false;
 		}
 	}
