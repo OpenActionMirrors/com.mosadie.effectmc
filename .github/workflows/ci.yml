@@ -9,17 +9,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Setup JDK
       - name: Set up JDK 8
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: adopt
           java-version: 8
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
 
       # Build Core
       - name: Build/Install Core
@@ -28,7 +28,7 @@ jobs:
 
       # Upload Maven Local
       - name: Upload 
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           path: ~/.m2/repository
           name: maven
@@ -50,21 +50,21 @@ jobs:
         
     steps:
       # Checks-out the repository under $GITHUB_WORKSPACE, so the job can access it
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Setup JDK
       - name: Set up JDK 8
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: adopt
           java-version: 8
       
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
 
       # Download Core
       - name: Download Core Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: maven
           path: ~/.m2/repository
@@ -81,7 +81,7 @@ jobs:
 
       # Upload Artifact
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.mod-loader }} ${{ matrix.mc-version }}
           path: ./MinecraftMod/${{ matrix.mod-loader }}/${{ matrix.mc-version }}/build/libs/*.jar
@@ -108,7 +108,7 @@ jobs:
         
     steps:
       # Checks-out the repository under $GITHUB_WORKSPACE, so the job can access it
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # # Setup JDK
       # - name: Set up JDK 1.8
@@ -124,17 +124,17 @@ jobs:
 
       # Setup JDK
       - name: Set up JDK 1.17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'adopt'
           java-version: 17
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
 
       # Download Core
       - name: Download Core Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: maven
           path: ~/.m2/repository
@@ -146,7 +146,7 @@ jobs:
 
       # Upload Artifact
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.mod-loader }} ${{ matrix.mc-version }}
           path: ./MinecraftMod/${{ matrix.mod-loader }}/${{ matrix.mc-version }}/build/libs/*.jar
@@ -165,21 +165,21 @@ jobs:
                 
     steps:
       # Checks-out the repository under $GITHUB_WORKSPACE, so the job can access it
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         
       # Setup JDK
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'microsoft'
           java-version: 21
         
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         
       # Download Core
       - name: Download Core Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: maven
           path: ~/.m2/repository
@@ -191,7 +191,7 @@ jobs:
         
       # Upload Artifact
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.mod-loader }} ${{ matrix.mc-version }}
           path: ./MinecraftMod/${{ matrix.mod-loader }}/${{ matrix.mc-version }}/build/libs/*.jar
@@ -210,21 +210,21 @@ jobs:
                 
     steps:
       # Checks-out the repository under $GITHUB_WORKSPACE, so the job can access it
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         
       # Setup JDK
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'microsoft'
           java-version: 25
         
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         
       # Download Core
       - name: Download Core Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: maven
           path: ~/.m2/repository
@@ -236,7 +236,7 @@ jobs:
         
       # Upload Artifact
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.mod-loader }} ${{ matrix.mc-version }}
           path: ./MinecraftMod/${{ matrix.mod-loader }}/${{ matrix.mc-version }}/build/libs/*.jar
@@ -247,17 +247,17 @@ jobs:
     needs: buildCore
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Setup JDK
       - name: Set up JDK 8
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: adopt
           java-version: 8
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -298,7 +298,7 @@ jobs:
         
       # Upload Artifact
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Stream Deck Plugin
           path: ./effectmc/*.streamDeckPlugin
