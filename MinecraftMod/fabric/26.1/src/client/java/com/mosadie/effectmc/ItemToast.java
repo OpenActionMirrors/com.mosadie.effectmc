@@ -5,39 +5,38 @@ import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.JsonOps;
 import com.mosadie.effectmc.core.EffectMCCore;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.toast.Toast;
-import net.minecraft.client.toast.ToastManager;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.RegistryOps;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.toasts.Toast;
+import net.minecraft.client.gui.components.toasts.ToastManager;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 public class ItemToast implements Toast {
 
     private static final Identifier TEXTURE = Identifier.tryParse("toast/recipe");
     private ItemStack item;
-    private Text title;
-    private Text body;
+    private Component title;
+    private Component body;
 
     private long lastChanged;
     private boolean changed = true;
     private Visibility visibility = Visibility.HIDE;
 
-    public ItemToast(String itemData, Text title, Text body, EffectMCCore core) {
-        if (MinecraftClient.getInstance().world == null) {
+    public ItemToast(String itemData, Component title, Component body, EffectMCCore core) {
+        if (Minecraft.getInstance().level == null) {
             EffectMC.LOGGER.warn("Error decoding item data: No level");
             item = new ItemStack(Items.AIR);
             this.title = title;
             this.body = body;
             return;
         }
-        DataResult<Pair<ItemStack, JsonElement>> dataResult = ItemStack.CODEC.decode(RegistryOps.of(JsonOps.INSTANCE, MinecraftClient.getInstance().world.getRegistryManager()), core.fromJson(itemData));
+        DataResult<Pair<ItemStack, JsonElement>> dataResult = ItemStack.CODEC.decode(RegistryOps.create(JsonOps.INSTANCE, Minecraft.getInstance().level.registryAccess()), core.fromJson(itemData));
 
         if (dataResult.error().isPresent()) {
             EffectMC.LOGGER.warn("Error decoding item data: " + dataResult.error().get());
@@ -54,7 +53,7 @@ public class ItemToast implements Toast {
     }
 
     @Override
-    public Visibility getVisibility() {
+    public Visibility getWantedVisibility() {
         return visibility;
     }
 
@@ -69,10 +68,16 @@ public class ItemToast implements Toast {
     }
 
     @Override
-    public void draw(DrawContext context, TextRenderer textRenderer, long startTime) {
-        context.drawGuiTexture(RenderPipelines.GUI_TEXTURED, TEXTURE, 0, 0, this.getWidth(), this.getHeight());
-        context.drawText(textRenderer, title, 30, 7, -16777216, false);
-        context.drawText(textRenderer, body, 30, 18, -16777216, false);
-        context.drawItemWithoutEntity(item, 8, 8);
+    public void extractRenderState(GuiGraphicsExtractor guiGraphics, Font font, long time) {
+//        if (changed) {
+//            lastChanged = time;
+//            changed = false;
+//        }
+//
+
+        guiGraphics.blitSprite(RenderPipelines.GUI_TEXTURED, TEXTURE, 0, 0, this.width(), this.height());
+        guiGraphics.text(font, title, 30, 7, -16777216, false);
+        guiGraphics.text(font, body, 30, 18, -16777216, false);
+        guiGraphics.fakeItem(item, 8, 8);
     }
 }

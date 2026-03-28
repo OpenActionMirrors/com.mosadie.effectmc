@@ -18,43 +18,38 @@ import com.mosadie.effectmc.core.effect.internal.EffectRequest;
 import com.mosadie.effectmc.core.handler.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ConfirmScreen;
-import net.minecraft.client.gui.screen.DisconnectedScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.client.gui.screen.ingame.BookScreen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
-import net.minecraft.client.gui.screen.multiplayer.DirectConnectScreen;
-import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
-import net.minecraft.client.gui.screen.world.CreateWorldScreen;
-import net.minecraft.client.gui.screen.world.SelectWorldScreen;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.client.option.Perspective;
-import net.minecraft.client.sound.PositionedSoundInstance;
-import net.minecraft.client.sound.SoundInstance;
-import net.minecraft.client.toast.SystemToast;
-import net.minecraft.command.CommandRegistryAccess;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.WrittenBookContentComponent;
-import net.minecraft.entity.player.PlayerModelPart;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.message.ChatVisibility;
-import net.minecraft.registry.RegistryOps;
-import net.minecraft.server.integrated.IntegratedServer;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.text.Text;
-import net.minecraft.text.TranslatableTextContent;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.random.Random;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
+import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.client.gui.screens.*;
+import net.minecraft.client.gui.screens.inventory.BookViewScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
+import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
+import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.client.resources.sounds.SoundInstance;
+import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.commands.CommandBuildContext;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.player.ChatVisiblity;
+import net.minecraft.world.entity.player.PlayerModelPart;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.WrittenBookContent;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -81,8 +76,8 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 	public static Logger LOGGER = LogManager.getLogger();
 
 	private static Narrator narrator = Narrator.getNarrator();
-	private static Random random = Random.create();
-	private static ServerInfo serverInfo = new ServerInfo("", "", ServerInfo.ServerType.OTHER); // Used to hold data during Open Screen
+	private static RandomSource random = RandomSource.create();
+	private static ServerData serverData = new ServerData("", "", ServerData.Type.OTHER); // Used to hold data during Open Screen
 
 	private HttpClient httpClient;
 
@@ -129,21 +124,21 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 		httpClient = HttpClient.newHttpClient();
 	}
 
-	private void registerClientCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
+	private void registerClientCommand(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext contextUnused) {
 		LOGGER.info("Registering Client Command");
-		dispatcher.register(ClientCommandManager.literal("effectmc")
-				.then(ClientCommandManager.literal("trust").executes((context -> {
-					MinecraftClient.getInstance().send(core::setTrustFlag);
+		dispatcher.register(ClientCommands.literal("effectmc")
+				.then(ClientCommands.literal("trust").executes((context -> {
+					Minecraft.getInstance().execute(core::setTrustFlag);
 					receiveChatMessage("[EffectMC] Now prompting to trust the next request sent.");
 					return 0;
 				})))
-				.then(ClientCommandManager.literal("exportbook").executes((context -> {
-					if (MinecraftClient.getInstance().player == null) {
+				.then(ClientCommands.literal("exportbook").executes((context -> {
+					if (Minecraft.getInstance().player == null) {
 						return 0;
 					}
 
-					ItemStack mainHand = MinecraftClient.getInstance().player.getMainHandStack();
-					ItemStack offHand = MinecraftClient.getInstance().player.getOffHandStack();
+					ItemStack mainHand = Minecraft.getInstance().player.getMainHandItem();
+					ItemStack offHand = Minecraft.getInstance().player.getOffhandItem();
 
 					ItemStack bookStack = null;
 					if (mainHand.getItem().equals(Items.WRITTEN_BOOK)) {
@@ -157,12 +152,12 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 						return 0;
 					}
 
-					if (!bookStack.getComponents().contains(DataComponentTypes.WRITTEN_BOOK_CONTENT)) {
+					if (!bookStack.getComponents().has(DataComponents.WRITTEN_BOOK_CONTENT)) {
 						receiveChatMessage("[EffectMC] Failed to export book: Missing component.");
 						return 0;
 					}
 
-					DataResult<JsonElement> dataResult = WrittenBookContentComponent.CODEC.encodeStart(JsonOps.INSTANCE, bookStack.get(DataComponentTypes.WRITTEN_BOOK_CONTENT));
+					DataResult<JsonElement> dataResult = WrittenBookContent.CODEC.encodeStart(JsonOps.INSTANCE, bookStack.get(DataComponents.WRITTEN_BOOK_CONTENT));
 
 					if (dataResult.isError()) {
 						receiveChatMessage("[EffectMC] Failed to export book: Error encoding JSON.");
@@ -184,18 +179,18 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 					LOGGER.info("Exported Book JSON: " + json);
 					receiveChatMessage("[EffectMC] Exported the held book to the current log file.");
 					return 0;
-				}))).then(ClientCommandManager.literal("exportitem").executes((context -> {
-					if (MinecraftClient.getInstance().player == null) {
+				}))).then(ClientCommands.literal("exportitem").executes((context -> {
+					if (Minecraft.getInstance().player == null) {
 						LOGGER.info("Null player running exportitem, this shouldn't happen!");
 						return 0;
 					}
 
-					if (MinecraftClient.getInstance().world == null) {
+					if (Minecraft.getInstance().level == null) {
 						LOGGER.info("Null world running exportitem, this shouldn't happen!");
 						return 0;
 					}
 
-					DataResult<JsonElement> dataResult = ItemStack.CODEC.encodeStart(RegistryOps.of(JsonOps.INSTANCE, MinecraftClient.getInstance().world.getRegistryManager()), MinecraftClient.getInstance().player.getMainHandStack());
+					DataResult<JsonElement> dataResult = ItemStack.CODEC.encodeStart(RegistryOps.create(JsonOps.INSTANCE, Minecraft.getInstance().level.registryAccess()), Minecraft.getInstance().player.getMainHandItem());
 
 					if (dataResult.isError()) {
 						receiveChatMessage("[EffectMC] Failed to export held item data: Error encoding JSON.");
@@ -215,14 +210,14 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 					String json = dataResult.result().get().toString();
 
 					LOGGER.info("Held Item JSON: " + json);
-					showItemToast(json, "Exported", MinecraftClient.getInstance().player.getMainHandStack().getName().getString());
+					showItemToast(json, "Exported", Minecraft.getInstance().player.getMainHandItem().getDisplayName().getString());
 					receiveChatMessage("[EffectMC] Exported held item data to log file!");
 					return 0;
-				}))).then(ClientCommandManager.literal("exporteffect").executes((context -> {
+				}))).then(ClientCommands.literal("exporteffect").executes((context -> {
 					core.setExportFlag();
 					receiveChatMessage("[EffectMC] Will export the next triggered effect as JSON to the current log file.");
 					return 0;
-				}))).then(ClientCommandManager.literal("trigger").then(ClientCommandManager.argument("json", StringArgumentType.greedyString()).executes((context -> {
+				}))).then(ClientCommands.literal("trigger").then(ClientCommands.argument("json", StringArgumentType.greedyString()).executes((context -> {
 					String json = StringArgumentType.getString(context, "json");
 					EffectRequest request = core.requestFromJson(json);
 
@@ -259,74 +254,74 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 
 	@Override
 	public boolean joinServer(String serverIp) {
-		MinecraftClient.getInstance().send(() -> {
+		Minecraft.getInstance().execute(() -> {
 			leaveIfNeeded();
 
-			if (!ServerAddress.isValid(serverIp)) {
+			if (!ServerAddress.isValidAddress(serverIp)) {
 				LOGGER.warn("Invalid server address: " + serverIp);
 				return;
 			}
 
-			ServerAddress address = ServerAddress.parse(serverIp);
-			ServerInfo info = new ServerInfo("EffectMC", serverIp, ServerInfo.ServerType.OTHER);
+			ServerAddress address = ServerAddress.parseString(serverIp);
+			ServerData info = new ServerData("EffectMC", serverIp, ServerData.Type.OTHER);
 
 
 			LOGGER.info("Connecting to " + serverIp);
 
 			// Connect to server
 
-			ConnectScreen.connect(new TitleScreen(), MinecraftClient.getInstance(), address, info, false, null);
+			ConnectScreen.startConnecting(new TitleScreen(), Minecraft.getInstance(), address, info, false, null);
 		});
 		return true;
 	}
 
 	@Override
 	public boolean setSkinLayer(SkinLayerEffect.SKIN_SECTION section, boolean visibility) {
-		GameOptions options = MinecraftClient.getInstance().options;
+		Options options = Minecraft.getInstance().options;
 
 		switch (section) {
 			case ALL:
-				options.setPlayerModelPart(PlayerModelPart.CAPE, visibility);
+				options.setModelPart(PlayerModelPart.CAPE, visibility);
 				// Fall to ALL_BODY
 			case ALL_BODY:
-				options.setPlayerModelPart(PlayerModelPart.HAT, visibility);
-				options.setPlayerModelPart(PlayerModelPart.JACKET, visibility);
-				options.setPlayerModelPart(PlayerModelPart.LEFT_SLEEVE, visibility);
-				options.setPlayerModelPart(PlayerModelPart.LEFT_PANTS_LEG, visibility);
-				options.setPlayerModelPart(PlayerModelPart.RIGHT_SLEEVE, visibility);
-				options.setPlayerModelPart(PlayerModelPart.RIGHT_PANTS_LEG, visibility);
+				options.setModelPart(PlayerModelPart.HAT, visibility);
+				options.setModelPart(PlayerModelPart.JACKET, visibility);
+				options.setModelPart(PlayerModelPart.LEFT_SLEEVE, visibility);
+				options.setModelPart(PlayerModelPart.LEFT_PANTS_LEG, visibility);
+				options.setModelPart(PlayerModelPart.RIGHT_SLEEVE, visibility);
+				options.setModelPart(PlayerModelPart.RIGHT_PANTS_LEG, visibility);
 				break;
 			case CAPE:
-				options.setPlayerModelPart(PlayerModelPart.CAPE, visibility);
+				options.setModelPart(PlayerModelPart.CAPE, visibility);
 				break;
 			case JACKET:
-				options.setPlayerModelPart(PlayerModelPart.JACKET, visibility);
+				options.setModelPart(PlayerModelPart.JACKET, visibility);
 				break;
 			case LEFT_SLEEVE:
-				options.setPlayerModelPart(PlayerModelPart.LEFT_SLEEVE, visibility);
+				options.setModelPart(PlayerModelPart.LEFT_SLEEVE, visibility);
 				break;
 			case RIGHT_SLEEVE:
-				options.setPlayerModelPart(PlayerModelPart.RIGHT_SLEEVE, visibility);
+				options.setModelPart(PlayerModelPart.RIGHT_SLEEVE, visibility);
 				break;
 			case LEFT_PANTS_LEG:
-				options.setPlayerModelPart(PlayerModelPart.LEFT_PANTS_LEG, visibility);
+				options.setModelPart(PlayerModelPart.LEFT_PANTS_LEG, visibility);
 				break;
 			case RIGHT_PANTS_LEG:
-				options.setPlayerModelPart(PlayerModelPart.RIGHT_PANTS_LEG, visibility);
+				options.setModelPart(PlayerModelPart.RIGHT_PANTS_LEG, visibility);
 				break;
 			case HAT:
-				options.setPlayerModelPart(PlayerModelPart.HAT, visibility);
+				options.setModelPart(PlayerModelPart.HAT, visibility);
 				break;
 		}
 
-		options.write();
+		options.save();
 
 		return true;
 	}
 
 	@Override
 	public boolean toggleSkinLayer(SkinLayerEffect.SKIN_SECTION section) {
-		GameOptions options = MinecraftClient.getInstance().options;
+		Options options = Minecraft.getInstance().options;
 
 		switch (section) {
 			case ALL:
@@ -363,24 +358,24 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 				break;
 		}
 
-		options.write();
+		options.save();
 
 		return true;
 	}
 
-	private void togglePlayerModelPart(GameOptions options, PlayerModelPart part) {
-		options.setPlayerModelPart(part, !options.isPlayerModelPartEnabled(part));
+	private void togglePlayerModelPart(Options options, PlayerModelPart part) {
+		options.setModelPart(part, !options.isModelPartEnabled(part));
 	}
 
 	@Override
 	public boolean sendChatMessage(String message) {
-		if (MinecraftClient.getInstance().player != null) {
+		if (Minecraft.getInstance().player != null) {
 			if (message.startsWith("/")) {
 				LOGGER.info("Sending command message: " + message);
-				MinecraftClient.getInstance().player.networkHandler.sendChatCommand(message.substring(1));
+				Minecraft.getInstance().player.connection.sendCommand(message.substring(1));
 			} else {
 				LOGGER.info("Sending chat message: " + message);
-				MinecraftClient.getInstance().player.networkHandler.sendChatMessage(message);
+				Minecraft.getInstance().player.connection.sendChat(message);
 			}
 
 			return true;
@@ -391,9 +386,9 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 
 	@Override
 	public boolean receiveChatMessage(String message) {
-		if (MinecraftClient.getInstance().player != null) {
+		if (Minecraft.getInstance().player != null) {
 			LOGGER.info("Showing chat message: " + message);
-			MinecraftClient.getInstance().player.sendMessage(Text.of(message), false);
+			Minecraft.getInstance().player.sendSystemMessage(Component.literal(message));
 
 			return true;
 		}
@@ -404,30 +399,30 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 	@Override
 	public boolean showTitle(String title, String subtitle) {
 		LOGGER.info("Showing Title: " + title + " Subtitle: " + subtitle);
-		MinecraftClient.getInstance().inGameHud.setDefaultTitleFade();
-		MinecraftClient.getInstance().inGameHud.setSubtitle(Text.of(subtitle));
-		MinecraftClient.getInstance().inGameHud.setTitle(Text.of(title));
+		Minecraft.getInstance().gui.resetTitleTimes();
+		Minecraft.getInstance().gui.setSubtitle(Component.literal(subtitle));
+		Minecraft.getInstance().gui.setTitle(Component.literal(title));
 		return true;
 	}
 
 	@Override
 	public boolean showActionMessage(String message) {
 		LOGGER.info("Showing ActionBar message: " + message);
-		MinecraftClient.getInstance().inGameHud.setOverlayMessage(Text.of(message), false);
+		Minecraft.getInstance().gui.setOverlayMessage(Component.literal(message), false);
 		return true;
 	}
 
 	@Override
 	public void showTrustPrompt(Device device) {
-		MinecraftClient.getInstance().send(() -> {
-			ConfirmScreen screen = new ConfirmScreen(new EffectMCCore.TrustBooleanConsumer(device, core), Text.of("EffectMC - Trust Prompt"), Text.of("Do you want to trust this device?\n(Type: " + device.getType() + (device.getType() == DeviceType.OTHER ? " Device Id:" + device.getId() : "") + ")"));
-			MinecraftClient.getInstance().setScreen(screen);
+		Minecraft.getInstance().execute(() -> {
+			ConfirmScreen screen = new ConfirmScreen(new EffectMCCore.TrustBooleanConsumer(device, core), Component.literal("EffectMC - Trust Prompt"), Component.literal("Do you want to trust this device?\n(Type: " + device.getType() + (device.getType() == DeviceType.OTHER ? " Device Id:" + device.getId() : "") + ")"));
+			Minecraft.getInstance().setScreen(screen);
 		});
 	}
 
 	@Override
 	public boolean triggerDisconnect(DisconnectEffect.NEXT_SCREEN nextScreenType, String title, String message) {
-		MinecraftClient.getInstance().send(() -> {
+		Minecraft.getInstance().execute(() -> {
 			leaveIfNeeded();
 
 			Screen nextScreen;
@@ -439,7 +434,7 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 					break;
 
 				case SERVER_SELECT:
-					nextScreen = new MultiplayerScreen(new TitleScreen());
+					nextScreen = new JoinMultiplayerScreen(new TitleScreen());
 					break;
 
 				case WORLD_SELECT:
@@ -447,46 +442,46 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 					break;
 			}
 
-			DisconnectedScreen screen = new DisconnectedScreen(nextScreen, Text.of(title), Text.of(message));
-			MinecraftClient.getInstance().setScreen(screen);
+			DisconnectedScreen screen = new DisconnectedScreen(nextScreen, Component.literal(title), Component.literal(message));
+			Minecraft.getInstance().setScreen(screen);
 		});
 		return true;
 	}
 
 	@Override
 	public boolean playSound(String soundID, String categoryName, float volume, float pitch, boolean repeat, int repeatDelay, String attenuationType, double x, double y, double z, boolean relative, boolean global) {
-		MinecraftClient.getInstance().send(() -> {
+		Minecraft.getInstance().execute(() -> {
 			Identifier sound = Identifier.tryParse(soundID);
 
 			if (sound == null) {
 				LOGGER.info("Invalid sound Identifier");
 			}
 
-			SoundCategory category;
+			SoundSource category;
 			try {
-				category = SoundCategory.valueOf(categoryName.toUpperCase());
+				category = SoundSource.valueOf(categoryName.toUpperCase());
 			} catch (IllegalArgumentException e) {
-				category = SoundCategory.MASTER;
+				category = SoundSource.MASTER;
 			}
 
-			SoundInstance.AttenuationType attenuation;
+			SoundInstance.Attenuation attenuation;
 			try {
-				attenuation = SoundInstance.AttenuationType.valueOf(attenuationType.toUpperCase());
+				attenuation = SoundInstance.Attenuation.valueOf(attenuationType.toUpperCase());
 			} catch (IllegalArgumentException e) {
-				attenuation = SoundInstance.AttenuationType.NONE;
+				attenuation = SoundInstance.Attenuation.NONE;
 			}
 
 			double trueX = x;
 			double trueY = y;
 			double trueZ = z;
 
-			if (relative && MinecraftClient.getInstance().world != null && MinecraftClient.getInstance().player != null) {
-				trueX += MinecraftClient.getInstance().player.getX();
-				trueY += MinecraftClient.getInstance().player.getY();
-				trueZ += MinecraftClient.getInstance().player.getZ();
+			if (relative && Minecraft.getInstance().level != null && Minecraft.getInstance().player != null) {
+				trueX += Minecraft.getInstance().player.getX();
+				trueY += Minecraft.getInstance().player.getY();
+				trueZ += Minecraft.getInstance().player.getZ();
 			}
 
-			MinecraftClient.getInstance().getSoundManager().play(new PositionedSoundInstance(sound, category, volume, pitch, random, repeat, repeatDelay, attenuation, trueX, trueY, trueZ, global));
+			Minecraft.getInstance().getSoundManager().play(new SimpleSoundInstance(sound, category, volume, pitch, random, repeat, repeatDelay, attenuation, trueX, trueY, trueZ, global));
 		});
 
 		return true;
@@ -494,22 +489,22 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 
 	@Override
 	public void resetScreen() {
-		MinecraftClient.getInstance().send(() -> MinecraftClient.getInstance().setScreen(null));
+		Minecraft.getInstance().execute(() -> Minecraft.getInstance().setScreen(null));
 	}
 
 	@Override
 	public boolean stopSound(String sound, String categoryName) {
-		MinecraftClient.getInstance().send(() -> {
+		Minecraft.getInstance().execute(() -> {
 			Identifier location = sound == null ? null : Identifier.tryParse(sound);
-			SoundCategory category = null;
+			SoundSource category = null;
 
 			try {
-				category = SoundCategory.valueOf(categoryName);
+				category = SoundSource.valueOf(categoryName);
 			} catch (IllegalArgumentException | NullPointerException e) {
 				// Do nothing, if soundId is non-null Minecraft will auto-search, otherwise Minecraft stops all sounds.
 			}
 
-			MinecraftClient.getInstance().getSoundManager().stopSounds(location, category);
+			Minecraft.getInstance().getSoundManager().stop(location, category);
 		});
 
 		return true;
@@ -517,22 +512,22 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 
 	@Override
 	public boolean showToast(String title, String subtitle) {
-		MinecraftClient.getInstance().send(() -> MinecraftClient.getInstance().getToastManager().add(new SystemToast(SystemToast.Type.NARRATOR_TOGGLE, Text.of(title), Text.of(subtitle))));
+		Minecraft.getInstance().execute(() -> Minecraft.getInstance().getToastManager().addToast(new SystemToast(SystemToast.SystemToastId.NARRATOR_TOGGLE, Component.literal(title), Component.literal(subtitle))));
 
 		return true;
 	}
 
 	@Override
 	public boolean showItemToast(String itemData, String title, String subtitle) {
-		MinecraftClient.getInstance().send(() -> MinecraftClient.getInstance().getToastManager().add(new ItemToast(itemData, Text.of(title), Text.of(subtitle), core)));
+		Minecraft.getInstance().execute(() -> Minecraft.getInstance().getToastManager().addToast(new ItemToast(itemData, Component.literal(title), Component.literal(subtitle), core)));
 
 		return true;
 	}
 
 	@Override
 	public boolean openBook(JsonObject bookJSON) {
-		MinecraftClient.getInstance().send(() -> {
-			DataResult<Pair<WrittenBookContentComponent, JsonElement>> dataResult = WrittenBookContentComponent.CODEC.decode(JsonOps.INSTANCE, bookJSON);
+		Minecraft.getInstance().execute(() -> {
+			DataResult<Pair<WrittenBookContent, JsonElement>> dataResult = WrittenBookContent.CODEC.decode(JsonOps.INSTANCE, bookJSON);
 
 			if (dataResult.isError()) {
 				if (dataResult.error().isPresent()) {
@@ -549,13 +544,13 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 			}
 
 			ItemStack bookStack = new ItemStack(Items.WRITTEN_BOOK);
-			bookStack.set(DataComponentTypes.WRITTEN_BOOK_CONTENT, dataResult.result().get().getFirst());
+			bookStack.set(DataComponents.WRITTEN_BOOK_CONTENT, dataResult.result().get().getFirst());
 
-			BookScreen.Contents bookContents = BookScreen.Contents.create(bookStack);
+			BookViewScreen.BookAccess bookContents = BookViewScreen.BookAccess.fromItem(bookStack);
 
-			BookScreen screen = new BookScreen(bookContents);
+			BookViewScreen screen = new BookViewScreen(bookContents);
 
-			MinecraftClient.getInstance().setScreen(screen);
+			Minecraft.getInstance().setScreen(screen);
 		});
 
 		return true;
@@ -564,7 +559,7 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 	@Override
 	public boolean narrate(String message, boolean interrupt) {
 		if (narrator.active()) {
-			MinecraftClient.getInstance().send(() -> narrator.say(message, interrupt, 1.0f));
+			Minecraft.getInstance().execute(() -> narrator.say(message, interrupt, 1.0f));
 			return true;
 		}
 
@@ -575,14 +570,14 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 
 	@Override
 	public boolean loadWorld(String worldName) {
-		MinecraftClient.getInstance().send(() -> {
-			if (MinecraftClient.getInstance().getLevelStorage().levelExists(worldName)) {
+		Minecraft.getInstance().execute(() -> {
+			if (Minecraft.getInstance().getLevelSource().levelExists(worldName)) {
 				leaveIfNeeded();
 
 				LOGGER.info("Loading world...");
-				MinecraftClient.getInstance().createIntegratedServerLoader().start(worldName, () -> {
+				Minecraft.getInstance().createWorldOpenFlows().openWorld(worldName, () -> {
 					LOGGER.info("World load cancelled!");
-					MinecraftClient.getInstance().setScreen(new TitleScreen());
+					Minecraft.getInstance().setScreen(new TitleScreen());
 				});
 			} else {
 				LOGGER.warn("World " + worldName + " does not exist!");
@@ -608,7 +603,7 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 			LOGGER.info("Payload: " + core.toJson(payload));
 
 			HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.minecraftservices.com/minecraft/profile/skins"))
-					.header("Authorization", "Bearer " + MinecraftClient.getInstance().getSession().getAccessToken())
+					.header("Authorization", "Bearer " + Minecraft.getInstance().getUser().getAccessToken())
 					.POST(HttpRequest.BodyPublishers.ofString(core.toJson(payload), java.nio.charset.StandardCharsets.UTF_8))
 					.header("Content-Type", "application/json")
 					.build();
@@ -641,35 +636,35 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 	}
 
 	public void leaveIfNeeded() {
-		if (MinecraftClient.getInstance().world != null) {
+		if (Minecraft.getInstance().level != null) {
 			LOGGER.info("Disconnecting from world...");
 
-			MinecraftClient.getInstance().world.disconnect(Text.literal("Loading new world..."));
-			MinecraftClient.getInstance().disconnect(Text.of("Loading..."));
+			Minecraft.getInstance().level.disconnect(Component.literal("Loading new world..."));
+			Minecraft.getInstance().disconnect(new BlankScreen(), false);
 		}
 	}
 
 	@Override
 	public boolean openScreen(OpenScreenEffect.SCREEN screen) {
-		MinecraftClient.getInstance().execute(() -> {
+		Minecraft.getInstance().execute(() -> {
 			leaveIfNeeded();
 
 			switch (screen) {
 				case MAIN_MENU:
-					MinecraftClient.getInstance().setScreen(new TitleScreen());
+					Minecraft.getInstance().setScreen(new TitleScreen());
 					break;
 				case SERVER_SELECT:
-					MinecraftClient.getInstance().setScreen(new MultiplayerScreen(new TitleScreen()));
+					Minecraft.getInstance().setScreen(new JoinMultiplayerScreen(new TitleScreen()));
 					break;
 				case SERVER_DIRECT_CONNECT:
-					MinecraftClient.getInstance().setScreen(new DirectConnectScreen(new MultiplayerScreen(new TitleScreen()), this::connectIfTrue, serverInfo));
+					Minecraft.getInstance().setScreen(new DirectJoinServerScreen(new JoinMultiplayerScreen(new TitleScreen()), this::connectIfTrue, serverData));
 					break;
 				case WORLD_SELECT:
-					MinecraftClient.getInstance().setScreen(new SelectWorldScreen(new TitleScreen()));
+					Minecraft.getInstance().setScreen(new SelectWorldScreen(new TitleScreen()));
 					break;
 				case WORLD_CREATE:
-					CreateWorldScreen.show(MinecraftClient.getInstance(), () -> {
-							MinecraftClient.getInstance().setScreen(new SelectWorldScreen(new TitleScreen()));
+					CreateWorldScreen.openFresh(Minecraft.getInstance(), () -> {
+							Minecraft.getInstance().setScreen(new SelectWorldScreen(new TitleScreen()));
 					});
 					break;
 				default:
@@ -681,99 +676,99 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 
 	@Override
 	public boolean setFOV(int fov) {
-		MinecraftClient.getInstance().execute(() -> MinecraftClient.getInstance().options.getFov().setValue(fov));
+		Minecraft.getInstance().execute(() -> Minecraft.getInstance().options.fov().set(fov));
 		return true;
 	}
 
 	@Override
 	public boolean setPOV(SetPovEffect.POV pov) {
-		Perspective mcPov;
+		CameraType mcPov;
 
 		switch (pov) {
 			default:
 			case FIRST_PERSON:
-				mcPov = Perspective.FIRST_PERSON;
+				mcPov = CameraType.FIRST_PERSON;
 				break;
 
 			case THIRD_PERSON_BACK:
-				mcPov = Perspective.THIRD_PERSON_BACK;
+				mcPov = CameraType.THIRD_PERSON_BACK;
 				break;
 
 			case THIRD_PERSON_FRONT:
-				mcPov = Perspective.THIRD_PERSON_FRONT;
+				mcPov = CameraType.THIRD_PERSON_FRONT;
 				break;
 		}
 
-		MinecraftClient.getInstance().execute(() -> MinecraftClient.getInstance().options.setPerspective(mcPov));
+		Minecraft.getInstance().execute(() -> Minecraft.getInstance().options.setCameraType(mcPov));
 		return true;
 	}
 
 	@Override
 	public boolean setGuiScale(int scale) {
-		if (MinecraftClient.getInstance().options.getGuiScale().getValue().equals(scale)) {
+		if (Minecraft.getInstance().options.guiScale().get().equals(scale)) {
 			return true;
 		}
 
-		MinecraftClient.getInstance().execute(() -> {
-			MinecraftClient.getInstance().options.getGuiScale().setValue(scale);
-			MinecraftClient.getInstance().options.write();
-			MinecraftClient.getInstance().onResolutionChanged();
+		Minecraft.getInstance().execute(() -> {
+			Minecraft.getInstance().options.guiScale().set(scale);
+			Minecraft.getInstance().options.save();
+			Minecraft.getInstance().resizeGui();
 		});
 		return true;
 	}
 
 	@Override
 	public boolean setGamma(double gamma) {
-		MinecraftClient.getInstance().execute(() -> {
-			MinecraftClient.getInstance().options.getGamma().setValue(gamma);
-			MinecraftClient.getInstance().options.write();
+		Minecraft.getInstance().execute(() -> {
+			Minecraft.getInstance().options.gamma().set(gamma);
+			Minecraft.getInstance().options.save();
 		});
 		return true;
 	}
 
 	@Override
 	public boolean setChatVisibility(ChatVisibilityEffect.VISIBILITY visibility) {
-		ChatVisibility result;
+		ChatVisiblity result;
 		switch (visibility) {
 			case SHOW:
-				result = ChatVisibility.FULL;
+				result = ChatVisiblity.FULL;
 				break;
 
 			case COMMANDS_ONLY:
-				result = ChatVisibility.SYSTEM;
+				result = ChatVisiblity.SYSTEM;
 				break;
 
 			case HIDE:
-				result = ChatVisibility.HIDDEN;
+				result = ChatVisiblity.HIDDEN;
 				break;
 
 			default:
 				return false;
 		}
 
-		MinecraftClient.getInstance().execute(() -> {
-			MinecraftClient.getInstance().options.getChatVisibility().setValue(result);
-			MinecraftClient.getInstance().options.write();
+		Minecraft.getInstance().execute(() -> {
+			Minecraft.getInstance().options.chatVisibility().set(result);
+			Minecraft.getInstance().options.save();
 		});
 		return true;
 	}
 
 	@Override
 	public boolean setRenderDistance(int chunks) {
-		MinecraftClient.getInstance().execute(() -> {
-			MinecraftClient.getInstance().options.getViewDistance().setValue(chunks);
-			MinecraftClient.getInstance().options.write();
+		Minecraft.getInstance().execute(() -> {
+			Minecraft.getInstance().options.renderDistance().set(chunks);
+			Minecraft.getInstance().options.save();
 		});
 		return true;
 	}
 
 	@Override
 	public WorldState getWorldState() {
-		if (MinecraftClient.getInstance().world == null) {
+		if (Minecraft.getInstance().level == null) {
 			return WorldState.OTHER;
 		}
 
-		return MinecraftClient.getInstance().isConnectedToLocalServer() ? WorldState.SINGLEPLAYER : WorldState.MULTIPLAYER;
+		return Minecraft.getInstance().isLocalServer() ? WorldState.SINGLEPLAYER : WorldState.MULTIPLAYER;
 	}
 
 	@Override
@@ -782,10 +777,10 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 			return null;
 		}
 
-		IntegratedServer server = MinecraftClient.getInstance().getServer();
+		IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
 
 		if (server != null) {
-			return server.getSaveProperties().getLevelName();
+			return server.getWorldData().getLevelName();
 		}
 
 		LOGGER.info("Attempted to get SP World Name, but no integrated server was found!");
@@ -798,8 +793,8 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 			return null;
 		}
 
-		if (MinecraftClient.getInstance().getCurrentServerEntry() != null) {
-			return MinecraftClient.getInstance().getCurrentServerEntry().address;
+		if (Minecraft.getInstance().getCurrentServer() != null) {
+			return Minecraft.getInstance().getCurrentServer().ip;
 		}
 
 		LOGGER.info("Failed to get Server IP!");
@@ -808,48 +803,48 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 
 	@Override
 	public void setVolume(SetVolumeEffect.VOLUME_CATEGORIES category, int volume) {
-		MinecraftClient.getInstance().execute(() -> {
-			SoundCategory mcCategory;
+		Minecraft.getInstance().execute(() -> {
+			SoundSource mcCategory;
 
 			switch (category) {
 				case MASTER:
-					mcCategory = SoundCategory.MASTER;
+					mcCategory = SoundSource.MASTER;
 					break;
 
 				case MUSIC:
-					mcCategory = SoundCategory.MUSIC;
+					mcCategory = SoundSource.MUSIC;
 					break;
 
 				case RECORDS:
-					mcCategory = SoundCategory.RECORDS;
+					mcCategory = SoundSource.RECORDS;
 					break;
 
 				case WEATHER:
-					mcCategory = SoundCategory.WEATHER;
+					mcCategory = SoundSource.WEATHER;
 					break;
 
 				case BLOCKS:
-					mcCategory = SoundCategory.BLOCKS;
+					mcCategory = SoundSource.BLOCKS;
 					break;
 
 				case HOSTILE:
-					mcCategory = SoundCategory.HOSTILE;
+					mcCategory = SoundSource.HOSTILE;
 					break;
 
 				case NEUTRAL:
-					mcCategory = SoundCategory.NEUTRAL;
+					mcCategory = SoundSource.NEUTRAL;
 					break;
 
 				case PLAYERS:
-					mcCategory = SoundCategory.PLAYERS;
+					mcCategory = SoundSource.PLAYERS;
 					break;
 
 				case AMBIENT:
-					mcCategory = SoundCategory.AMBIENT;
+					mcCategory = SoundSource.AMBIENT;
 					break;
 
 				case VOICE:
-					mcCategory = SoundCategory.VOICE;
+					mcCategory = SoundSource.VOICE;
 					break;
 
 				default:
@@ -857,24 +852,24 @@ public class EffectMC implements ModInitializer, ClientModInitializer, EffectExe
 					return;
 			}
 
-			MinecraftClient.getInstance().options.getSoundVolumeOption(mcCategory).setValue(volume / 100.0d);
-			MinecraftClient.getInstance().options.write();
+			Minecraft.getInstance().options.getSoundSourceOptionInstance(mcCategory).set(volume / 100.0d);
+			Minecraft.getInstance().options.save();
 		});
 	}
 
 	private void connectIfTrue(boolean connect) {
 		if (connect) {
-			joinServer(serverInfo.address);
+			joinServer(serverData.ip);
 		} else {
-			MinecraftClient.getInstance().setScreen(new MultiplayerScreen(new TitleScreen()));
+			Minecraft.getInstance().setScreen(new JoinMultiplayerScreen(new TitleScreen()));
 		}
 	}
 
 	public class GameMessageHandler implements ClientReceiveMessageEvents.AllowGame {
 
 		@Override
-		public boolean allowReceiveGameMessage(Text message, boolean overlay) {
-			if (message.getContent() instanceof TranslatableTextContent text) {
+		public boolean allowReceiveGameMessage(Component message, boolean overlay) {
+			if (message.getContents() instanceof TranslatableContents text) {
 				if (!text.getKey().equals(EffectMCCore.TRANSLATION_TRIGGER_KEY)) {
 					//LOGGER.error("Received non-trigger message!");
 					return true;

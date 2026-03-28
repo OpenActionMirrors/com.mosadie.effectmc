@@ -1,18 +1,18 @@
 package com.mosadie.effectmc;
 
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 
 public class BlankScreen extends Screen {
 
     protected BlankScreen() {
-        super(Text.of("Loading..."));
+        super(Component.literal("Loading..."));
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks)  {
-        this.renderPanoramaBackground(context, deltaTicks);
-        super.render(context, mouseX, mouseY, deltaTicks);
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float deltaTicks)  {
+        this.extractPanorama(context, deltaTicks);
+        super.extractRenderState(context, mouseX, mouseY, deltaTicks);
     }
 }
